@@ -10,96 +10,97 @@ import (
 	"os"
 )
 
-type Session interface {
-	Get(url string, params map[string]interface{}) (map[string]interface{}, error)
-	Post(url string, data map[string]interface{}) (map[string]interface{}, error)
-	Put(url string, data map[string]interface{}) (map[string]interface{}, error)
-	Delete(url string, data map[string]interface{}) (map[string]interface{}, error)
-	Patch(url string, data map[string]interface{}) (map[string]interface{}, error)
-	UploadFile(url string, field string, filePath string, data map[string]string) (map[string]interface{}, error)
-	AddHeader(key string, value string)
-}
-
-type session struct {
+type Session struct {
 	headers map[string]string
 	verify  bool
 	client  http.Client
 }
 
-func New(headers map[string]string, verify bool) *session {
-	var client http.Client
-	if verify == false {
+type Options func(session *Session)
+
+func WithHeaders(headers map[string]string) Options {
+	return func(session *Session) {
+		session.headers = headers
+	}
+}
+
+func WithVerify(verify bool) Options {
+	return func(session *Session) {
+		session.verify = verify
+	}
+}
+
+func New(opts ...Options) *Session {
+	session := &Session{headers: nil, verify: false, client: http.Client{}}
+	for _, opt := range opts {
+		opt(session)
+	}
+	if session.verify == false {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
-		client = http.Client{Transport: tr}
+		session.client = http.Client{Transport: tr}
 	} else {
-		client = http.Client{}
+		session.client = http.Client{}
 	}
-	if headers == nil {
-		headers = make(map[string]string)
+	if session.headers == nil {
+		session.headers = make(map[string]string)
 	}
-	return &session{
-		headers: headers,
-		verify:  true,
-		client:  client,
-	}
+	return session
 }
 
-func (s *session) resetHeaders(res http.Response) {
+func (s *Session) resetHeaders(res http.Response) {
 	s.headers["Cookie"] = res.Header.Get("Cookie")
 }
 
-func (s *session) putHeaders(req *http.Request) {
+func (s *Session) putHeaders(req *http.Request) {
 	for key_, value_ := range s.headers {
 		req.Header.Set(key_, value_)
 	}
 }
 
-func (s *session) Headers() map[string]string {
+func (s *Session) Headers() map[string]string {
 	return s.headers
 }
 
-func (s *session) AddHeader(key string, value string) {
+func (s *Session) AddHeader(key string, value string) {
 	s.headers[key] = value
 }
 
-func (s *session) templateRequest(url string, data map[string]interface{}, method string) (map[string]interface{}, error) {
+func (s *Session) templateRequest(url string, data map[string]interface{}, method string) *Handler {
 	reqBody, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	req, err := http.NewRequest(method, url, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	s.putHeaders(req)
 	res, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
-	var resMap map[string]interface{}
-	_ = json.Unmarshal(body, &resMap)
-	return resMap, nil
+	return &Handler{json: string(body)}
 }
 
-func (s *session) Get(url string, params map[string]interface{}) (map[string]interface{}, error) {
-	res, err := s.templateRequest(url, params, "GET")
-	return res, err
+func (s *Session) Get(url string, params map[string]interface{}) *Handler {
+	res := s.templateRequest(url, params, "GET")
+	return res
 }
 
-func (s *session) Post(url string, data map[string]interface{}) (map[string]interface{}, error) {
-	res, err := s.templateRequest(url, data, "POST")
-	return res, err
+func (s *Session) Post(url string, data map[string]interface{}) *Handler {
+	res := s.templateRequest(url, data, "POST")
+	return res
 }
 
-func (s *session) UploadFile(url string, field string, filePath string, data map[string]string) (map[string]interface{}, error) {
+func (s *Session) UploadFile(url string, field string, filePath string, data map[string]string) *Handler {
 	// 如果读取错误直接将错误返回
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	defer file.Close()
 	// 创建写入
@@ -107,12 +108,12 @@ func (s *session) UploadFile(url string, field string, filePath string, data map
 	bodyWriter := multipart.NewWriter(bodyBuf)
 	fileWriter, err := bodyWriter.CreateFormFile(field, filePath)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	// 拷贝文件内容
 	_, err = io.Copy(fileWriter, file)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	// 写入其他字段
 	for key_, val := range data {
@@ -125,26 +126,24 @@ func (s *session) UploadFile(url string, field string, filePath string, data map
 	s.putHeaders(req)
 	res, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return &Handler{json: ""}
 	}
 	defer res.Body.Close()
-	var resMap map[string]interface{}
 	body, _ := io.ReadAll(res.Body)
-	_ = json.Unmarshal(body, &resMap)
-	return resMap, nil
+	return &Handler{json: string(body)}
 }
 
-func (s *session) Put(url string, data map[string]interface{}) (map[string]interface{}, error) {
-	res, err := s.templateRequest(url, data, "PUT")
-	return res, err
+func (s *Session) Put(url string, data map[string]interface{}) *Handler {
+	res := s.templateRequest(url, data, "PUT")
+	return res
 }
 
-func (s *session) Patch(url string, data map[string]interface{}) (map[string]interface{}, error) {
-	res, err := s.templateRequest(url, data, "PATCH")
-	return res, err
+func (s *Session) Patch(url string, data map[string]interface{}) *Handler {
+	res := s.templateRequest(url, data, "PATCH")
+	return res
 }
 
-func (s *session) Delete(url string, data map[string]interface{}) (map[string]interface{}, error) {
-	res, err := s.templateRequest(url, data, "DELETE")
-	return res, err
+func (s *Session) Delete(url string, data map[string]interface{}) *Handler {
+	res := s.templateRequest(url, data, "DELETE")
+	return res
 }

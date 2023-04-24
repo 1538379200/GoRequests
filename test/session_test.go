@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"github.com/1538379200/GoRequests/session"
 	"testing"
 )
@@ -15,12 +16,10 @@ func (ts *TestSuite) TestPost(t *testing.T) {
 		"app_id":  "cd86552a-4e63-44a0-8528-95c7248aba38",
 		"app_sec": "cd86552a-4e63-44a0-8528-95c7248aba38",
 	}
-	res, _ := ts.Post(ts.BaseUrl+"user/login/app", data)
-	resData := res["data"]
-	resMap := resData.(map[string]interface{})
-	accessToken := resMap["access_token"].(string)
+	accessToken := ts.Post(ts.BaseUrl+"user/login/app", data).Find("data.access_token").Str
+	//accessToken := ts.Find(res, "name.access_token").Str
 	ts.AddHeader("Authorization", "AppToken "+accessToken)
-	t.Log(res)
+	t.Log(accessToken)
 }
 
 func (ts *TestSuite) TestPostSearch(t *testing.T) {
@@ -33,27 +32,24 @@ func (ts *TestSuite) TestPostSearch(t *testing.T) {
 		"order_method":  "ORDER_DESC",
 		"template_id":   "",
 	}
-	res, _ := ts.Post(ts.BaseUrl+"sys/user-manager/user/search", data)
+	res := ts.Post(ts.BaseUrl+"sys/user-manager/user/search", data).JsonFormat()
+	fmt.Println(res)
 	t.Log(res)
 }
 
 func (ts *TestSuite) TestGet(t *testing.T) {
 	//res, _ := ts.Get("https://www.baidu.com", nil)
-	res, _ := ts.Get(ts.BaseUrl+"order/management/preset?prod_type=OrderProdType_3_GfIP", nil)
+	res := ts.Get(ts.BaseUrl+"order/management/preset?prod_type=OrderProdType_3_GfIP", nil).Json()
 	t.Log(res)
 }
 
 func TestRunner(t *testing.T) {
-	//headers := map[string]string{
-	//	"Content-Type": "application/json",
-	//}
-	s := session.New(nil, false)
+	s := session.New()
 	s.AddHeader("Content-Type", "application/json")
 	ts := TestSuite{
-		s,
-		"xxx",
+		*s,
+		"http://zcloud.skynetcloud.com/api/",
 	}
 	ts.TestPost(t)
 	ts.TestPostSearch(t)
-	ts.TestGet(t)
 }
