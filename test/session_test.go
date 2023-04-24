@@ -48,7 +48,7 @@ func TestRunner(t *testing.T) {
 	s.AddHeader("Content-Type", "application/json")
 	ts := TestSuite{
 		*s,
-		"http://zcloud.skynetcloud.com/api/",
+		"xxx",
 	}
 	ts.TestPost(t)
 	ts.TestPostSearch(t)
